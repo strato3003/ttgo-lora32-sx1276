@@ -48,10 +48,25 @@ int currentPower = 17;
 
 // Etat d'affichage / émission (non-bloquant)
 static char lastFrame[16] = "";
+static char lastTimestampText[16] = "";
+static uint32_t lastTxMillis = 0;
 static uint32_t lastAirMs = 0;
 static uint32_t lastPeriodMs = 0;
 static uint32_t nextTxAtMs = 0;
 static uint32_t lastDisplayAtMs = 0;
+
+static void formatUptime(uint32_t ms, char* out, size_t outSize) {
+  const uint32_t totalSeconds = ms / 1000UL;
+  const uint32_t hours = totalSeconds / 3600UL;
+  const uint32_t minutes = (totalSeconds % 3600UL) / 60UL;
+  const uint32_t seconds = totalSeconds % 60UL;
+  const uint32_t millisPart = ms % 1000UL;
+  snprintf(out, outSize, "%02lu:%02lu:%02lu.%03lu",
+           (unsigned long)(hours % 100UL),
+           (unsigned long)minutes,
+           (unsigned long)seconds,
+           (unsigned long)millisPart);
+}
 
 /** Temps en air (ms) — CR 4/5 (CR=1), en-tête explicite, CRC (formule LoRaWAN / Semtech). La puissance TX ne change pas le ToA. */
 static uint32_t loraTimeOnAirMs(int sf, long bwHz, int plBytes) {
@@ -126,19 +141,22 @@ void loop() {
 
   // Emettre seulement quand autorisé par l'intervalle calculé
   if ((int32_t)(now - nextTxAtMs) >= 0) {
-    char tsBuf[16];
-    snprintf(tsBuf, sizeof(tsBuf), "%lu", (unsigned long)now);
-    strncpy(lastFrame, tsBuf, sizeof(lastFrame) - 1);
-    lastFrame[sizeof(lastFrame) - 1] = '\0';
+    lastTxMillis = now;
+    formatUptime(lastTxMillis, lastTimestampText, sizeof(lastTimestampText));
+    snprintf(lastFrame, sizeof(lastFrame), "%lu", (unsigned long)lastTxMillis);
 
-    const int plBytes = strlen(lastFrame);
+    // Payload compressé: 4 octets (uint32_t millis)
+    const int plBytes = 4;
     lastAirMs = loraTimeOnAirMs(currentSF, currentBW, plBytes);
     const float duty = DUTY_CYCLE_PERCENT / 100.0f;
     lastPeriodMs = (uint32_t)ceilf((float)lastAirMs / duty);
     nextTxAtMs = now + lastPeriodMs;
 
     Serial.print(F("Envoi timestamp ms="));
-    Serial.print(lastFrame);
+    Serial.print(lastTxMillis);
+    Serial.print(F(" ("));
+    Serial.print(lastTimestampText);
+    Serial.print(F(")"));
     Serial.print(F(" ToA="));
     Serial.print(lastAirMs);
     Serial.print(F("ms periode>="));
@@ -146,7 +164,7 @@ void loop() {
     Serial.println(F("ms"));
 
     LoRa.beginPacket();
-    LoRa.print(lastFrame);
+    LoRa.write((const uint8_t*)&lastTxMillis, sizeof(lastTxMillis));
     LoRa.endPacket();
   }
 
@@ -171,8 +189,8 @@ void loop() {
     display.print(currentPower);
 
     display.setCursor(0, 20);
-    display.print("frm:");
-    display.print(lastFrame[0] ? lastFrame : "-");
+    display.print("ts:");
+    display.print(lastTimestampText[0] ? lastTimestampText : "-");
 
     display.setCursor(0, 30);
     display.print("ToA ");

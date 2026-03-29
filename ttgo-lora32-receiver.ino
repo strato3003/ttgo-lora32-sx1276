@@ -35,6 +35,20 @@
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
 
 String LoRaData;
+static char tsText[16] = "";
+
+static void formatUptime(uint32_t ms, char* out, size_t outSize) {
+  const uint32_t totalSeconds = ms / 1000UL;
+  const uint32_t hours = totalSeconds / 3600UL;
+  const uint32_t minutes = (totalSeconds % 3600UL) / 60UL;
+  const uint32_t seconds = totalSeconds % 60UL;
+  const uint32_t millisPart = ms % 1000UL;
+  snprintf(out, outSize, "%02lu:%02lu:%02lu.%03lu",
+           (unsigned long)(hours % 100UL),
+           (unsigned long)minutes,
+           (unsigned long)seconds,
+           (unsigned long)millisPart);
+}
 
 void setup() { 
   //initialize Serial Monitor
@@ -85,9 +99,21 @@ void loop() {
     //received a packet
     Serial.print("Received packet ");
 
-    //read packet
-    while (LoRa.available()) {
-      LoRaData = LoRa.readString();
+    // read packet (nouveau format: 4 octets millis), fallback ASCII
+    uint32_t ms = 0;
+    if (packetSize == (int)sizeof(ms)) {
+      uint8_t* p = (uint8_t*)&ms;
+      for (size_t i = 0; i < sizeof(ms) && LoRa.available(); i++) {
+        p[i] = (uint8_t)LoRa.read();
+      }
+      formatUptime(ms, tsText, sizeof(tsText));
+      LoRaData = String(ms) + " (" + String(tsText) + ")";
+      Serial.print(LoRaData);
+    } else {
+      LoRaData = "";
+      while (LoRa.available()) {
+        LoRaData += (char)LoRa.read();
+      }
       Serial.print(LoRaData);
     }
 

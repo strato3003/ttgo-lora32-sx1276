@@ -1,6 +1,6 @@
 # ttgo-lora32-sx1276
 
-**Version : 1.0.1**
+**Version : 1.0.2**
 
 Sketch Arduino pour la carte **TTGO LoRa32 (SX1276)** : envoi et réception LoRa avec afficheur OLED SSD1306. Base tirée du tutoriel [Random Nerd Tutorials — TTGO LoRa32 SX1276](https://randomnerdtutorials.com/ttgo-lora32-sx1276-arduino-ide/).
 
@@ -14,7 +14,9 @@ Sketch Arduino pour la carte **TTGO LoRa32 (SX1276)** : envoi et réception LoRa
 
 ### Payload
 
-- Le paquet transporte un **horodatage** : valeur de `millis()` en **chaîne ASCII décimale** (compatible avec `LoRa.readString()` côté récepteur).
+- Le paquet transporte un **horodatage** basé sur `millis()` :
+  - **Transmission compressée** : `uint32_t` sur **4 octets** (binaire).
+  - **Affichage en clair** : format **`HH:MM:SS.mmm`** (uptime).
 
 ### Intervalle d’émission et duty cycle (réglementation type UE 868 MHz)
 
@@ -35,15 +37,21 @@ Les paramètres radio utilisés pour le calcul et l’émission sont `currentSF`
 ### Affichage OLED (émetteur)
 
 - **Duty cycle** réglé (`DUTY_CYCLE_PERCENT`), **SF**, **BW**, **puissance**.
-- **Trame** : dernière payload envoyée (timestamp ASCII).
+- **Trame / timestamp** : dernière payload envoyée (timestamp affiché en clair).
 - **ToA** (ms), **période** minimale (ms), **délai restant** avant le prochain envoi (ms).
 
 ## Récepteur (`ttgo-lora32-receiver.ino`)
 
-- Reçoit une chaîne ASCII (timestamp émis) et l’affiche sur le moniteur série et l’OLED.
+- Reçoit soit :
+  - **binaire (4 octets)** : `uint32_t millis` (format actuel) ; affichage `millis (HH:MM:SS.mmm)`
+  - **ASCII** : fallback si une ancienne version émet encore en texte
 - Pour rester cohérent avec l’émetteur, garder les mêmes **fréquence**, **SF**, **BW** et **CR** (défaut 4/5).
 
 ## Historique des versions
+
+### 1.0.2
+
+- Payload : envoi du timestamp **compressé** (4 octets) et affichage **en clair** (`HH:MM:SS.mmm`) sur l’OLED ; récepteur compatible (décodage binaire + fallback ASCII).
 
 ### 1.0.1
 
