@@ -6,6 +6,8 @@
 //Libraries for LoRa
 #include <SPI.h>
 #include <LoRa.h>
+#include <math.h>
+#include <string.h>
 
 //Libraries for OLED Display
 #include <Wire.h>
@@ -25,6 +27,12 @@
 //915E6 for North America
 #define BAND 866E6
 
+/** Pour 868 MHz (UE), souvent 1 % ou 0,1 % selon sous-bande — ajuster selon canal / règlement. */
+#define DUTY_CYCLE_PERCENT 1.0f
+
+/** Doit correspondre au réglage LoRa (défaut de la lib = 8). */
+#define LORA_PREAMBLE_LEN 8
+
 //OLED pins
 #define OLED_SDA 4
 #define OLED_SCL 15 
@@ -32,23 +40,33 @@
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
-//packet counter
-int counter = 0;
-
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RST);
 
 int currentSF = 7;
 long currentBW = 125E3;
 int currentPower = 17;
 
-void setup() {
-  Serial.begin(115200);
-  LoRa.begin(868E6);
-  LoRa.setSpreadingFactor(currentSF);
-  LoRa.setSignalBandwidth(currentBW);
-  LoRa.setTxPower(currentPower);
+/** Temps en air (ms) — CR 4/5 (CR=1), en-tête explicite, CRC (formule LoRaWAN / Semtech). La puissance TX ne change pas le ToA. */
+static uint32_t loraTimeOnAirMs(int sf, long bwHz, int plBytes) {
+  const int cr = 1;
+  const int h = 0;
+  const int de = (bwHz == 125000 && sf >= 11) ? 1 : 0;
+  const double ts = pow(2.0, sf) / (double)bwHz;
+  const double tPreamble = (LORA_PREAMBLE_LEN + 4.25) * ts;
+  const double denom = 4.0 * (sf - 2 * de);
+  const double payloadBits = 8.0 * plBytes;
+  const double q = (payloadBits - 4.0 * sf + 28.0 + 16.0 - 20.0 * h) / denom;
+  double nCeil = ceil(q);
+  if (nCeil < 0.0) {
+    nCeil = 0.0;
+  }
+  const int symExtra = (int)nCeil * (cr + 4);
+  const int payloadSymbNb = 8 + symExtra;
+  const double tPayload = payloadSymbNb * ts;
+  return (uint32_t)ceil((tPreamble + tPayload) * 1000.0);
+}
 
-  //initialize Serial Monitor
+void setup() {
   Serial.begin(115200);
 
   //reset OLED display via software
@@ -82,6 +100,10 @@ void setup() {
     Serial.println("Starting LoRa failed!");
     while (1);
   }
+  LoRa.setSpreadingFactor(currentSF);
+  LoRa.setSignalBandwidth(currentBW);
+  LoRa.setTxPower(currentPower);
+
   Serial.println("LoRa Initializing OK!");
   display.setCursor(0,10);
   display.print("LoRa Initializing OK!");
@@ -90,39 +112,49 @@ void setup() {
 }
 
 void loop() {
-   
-  Serial.print("Sending packet: ");
-  Serial.println(counter);
+  char tsBuf[16];
+  snprintf(tsBuf, sizeof(tsBuf), "%lu", (unsigned long)millis());
+  const int plBytes = strlen(tsBuf);
 
-  //Send LoRa packet to receiver
+  const uint32_t airMs = loraTimeOnAirMs(currentSF, currentBW, plBytes);
+  const float duty = DUTY_CYCLE_PERCENT / 100.0f;
+  const uint32_t periodMs = (uint32_t)ceilf((float)airMs / duty);
+  const uint32_t waitMs = (periodMs > airMs) ? (periodMs - airMs) : 0;
+
+  Serial.print(F("Envoi timestamp ms="));
+  Serial.print(tsBuf);
+  Serial.print(F(" ToA="));
+  Serial.print(airMs);
+  Serial.print(F("ms periode>="));
+  Serial.print(periodMs);
+  Serial.println(F("ms"));
+
   LoRa.beginPacket();
-  String message = "5s message No ";
-  //LoRa.print("hello ");
-  //String randomizedMessage = randomCaseSensitive(message);
-  LoRa.print(message);
-  LoRa.print(counter);
+  LoRa.print(tsBuf);
   LoRa.endPacket();
-  
+
   display.clearDisplay();
-  display.setCursor(0,0);
+  display.setCursor(0, 0);
   display.println("LORA SENDER");
-  display.setCursor(0,10);
+  display.setCursor(0, 10);
   display.print("SF=");
   display.print(currentSF);
-  display.print(",BW=");
-  display.print(currentBW);
-  display.print(",PW=");
+  display.print(" BW=");
+  display.print((int)(currentBW / 1000));
+  display.print("k PW=");
   display.print(currentPower);
-  display.setCursor(0,20);
-  display.setTextSize(1);
-  display.print("LoRa packet sent.");
-  display.setCursor(0,30);
-  display.print("Counter:");
-  display.setCursor(50,30);
-  display.print(counter);      
+  display.setCursor(0, 20);
+  display.print("ts:");
+  display.print(tsBuf);
+  display.setCursor(0, 30);
+  display.print("ToA:");
+  display.print(airMs);
+  display.print("ms");
+  display.setCursor(0, 40);
+  display.print("wait:");
+  display.print(waitMs);
+  display.print("ms");
   display.display();
 
-  counter++;
-  
-  delay(5000);
+  delay(waitMs);
 }
