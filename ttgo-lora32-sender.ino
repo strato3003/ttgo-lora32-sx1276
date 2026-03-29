@@ -46,6 +46,13 @@ int currentSF = 7;
 long currentBW = 125E3;
 int currentPower = 17;
 
+// Etat d'affichage / émission (non-bloquant)
+static char lastFrame[16] = "";
+static uint32_t lastAirMs = 0;
+static uint32_t lastPeriodMs = 0;
+static uint32_t nextTxAtMs = 0;
+static uint32_t lastDisplayAtMs = 0;
+
 /** Temps en air (ms) — CR 4/5 (CR=1), en-tête explicite, CRC (formule LoRaWAN / Semtech). La puissance TX ne change pas le ToA. */
 static uint32_t loraTimeOnAirMs(int sf, long bwHz, int plBytes) {
   const int cr = 1;
@@ -109,52 +116,79 @@ void setup() {
   display.print("LoRa Initializing OK!");
   display.display();
   delay(2000);
+
+  // Première émission immédiate
+  nextTxAtMs = millis();
 }
 
 void loop() {
-  char tsBuf[16];
-  snprintf(tsBuf, sizeof(tsBuf), "%lu", (unsigned long)millis());
-  const int plBytes = strlen(tsBuf);
+  const uint32_t now = millis();
 
-  const uint32_t airMs = loraTimeOnAirMs(currentSF, currentBW, plBytes);
-  const float duty = DUTY_CYCLE_PERCENT / 100.0f;
-  const uint32_t periodMs = (uint32_t)ceilf((float)airMs / duty);
-  const uint32_t waitMs = (periodMs > airMs) ? (periodMs - airMs) : 0;
+  // Emettre seulement quand autorisé par l'intervalle calculé
+  if ((int32_t)(now - nextTxAtMs) >= 0) {
+    char tsBuf[16];
+    snprintf(tsBuf, sizeof(tsBuf), "%lu", (unsigned long)now);
+    strncpy(lastFrame, tsBuf, sizeof(lastFrame) - 1);
+    lastFrame[sizeof(lastFrame) - 1] = '\0';
 
-  Serial.print(F("Envoi timestamp ms="));
-  Serial.print(tsBuf);
-  Serial.print(F(" ToA="));
-  Serial.print(airMs);
-  Serial.print(F("ms periode>="));
-  Serial.print(periodMs);
-  Serial.println(F("ms"));
+    const int plBytes = strlen(lastFrame);
+    lastAirMs = loraTimeOnAirMs(currentSF, currentBW, plBytes);
+    const float duty = DUTY_CYCLE_PERCENT / 100.0f;
+    lastPeriodMs = (uint32_t)ceilf((float)lastAirMs / duty);
+    nextTxAtMs = now + lastPeriodMs;
 
-  LoRa.beginPacket();
-  LoRa.print(tsBuf);
-  LoRa.endPacket();
+    Serial.print(F("Envoi timestamp ms="));
+    Serial.print(lastFrame);
+    Serial.print(F(" ToA="));
+    Serial.print(lastAirMs);
+    Serial.print(F("ms periode>="));
+    Serial.print(lastPeriodMs);
+    Serial.println(F("ms"));
 
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.println("LORA SENDER");
-  display.setCursor(0, 10);
-  display.print("SF=");
-  display.print(currentSF);
-  display.print(" BW=");
-  display.print((int)(currentBW / 1000));
-  display.print("k PW=");
-  display.print(currentPower);
-  display.setCursor(0, 20);
-  display.print("ts:");
-  display.print(tsBuf);
-  display.setCursor(0, 30);
-  display.print("ToA:");
-  display.print(airMs);
-  display.print("ms");
-  display.setCursor(0, 40);
-  display.print("wait:");
-  display.print(waitMs);
-  display.print("ms");
-  display.display();
+    LoRa.beginPacket();
+    LoRa.print(lastFrame);
+    LoRa.endPacket();
+  }
 
-  delay(waitMs);
+  // Rafraîchir l'écran en continu (sans bloquer)
+  if ((uint32_t)(now - lastDisplayAtMs) >= 200) {
+    lastDisplayAtMs = now;
+    const uint32_t remainingMs =
+        ((int32_t)(nextTxAtMs - now) > 0) ? (uint32_t)(nextTxAtMs - now) : 0;
+
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.print("LORA SENDER ");
+    display.print(DUTY_CYCLE_PERCENT, 1);
+    display.print("%");
+
+    display.setCursor(0, 10);
+    display.print("SF");
+    display.print(currentSF);
+    display.print(" BW");
+    display.print((int)(currentBW / 1000));
+    display.print("k P");
+    display.print(currentPower);
+
+    display.setCursor(0, 20);
+    display.print("frm:");
+    display.print(lastFrame[0] ? lastFrame : "-");
+
+    display.setCursor(0, 30);
+    display.print("ToA ");
+    display.print(lastAirMs);
+    display.print("ms");
+
+    display.setCursor(0, 40);
+    display.print("per ");
+    display.print(lastPeriodMs);
+    display.print("ms");
+
+    display.setCursor(0, 50);
+    display.print("next ");
+    display.print(remainingMs);
+    display.print("ms");
+
+    display.display();
+  }
 }

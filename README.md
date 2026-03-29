@@ -1,6 +1,6 @@
 # ttgo-lora32-sx1276
 
-**Version : 1.0.0**
+**Version : 1.0.1**
 
 Sketch Arduino pour la carte **TTGO LoRa32 (SX1276)** : envoi et réception LoRa avec afficheur OLED SSD1306. Base tirée du tutoriel [Random Nerd Tutorials — TTGO LoRa32 SX1276](https://randomnerdtutorials.com/ttgo-lora32-sx1276-arduino-ide/).
 
@@ -20,9 +20,9 @@ Sketch Arduino pour la carte **TTGO LoRa32 (SX1276)** : envoi et réception LoRa
 
 - Le **temps en air (ToA)** est calculé à partir du **facteur d’étalement (SF)**, de la **bande passante (BW)**, de la longueur du payload, du **codage 4/5** (défaut de la librairie), en-tête explicite et CRC (formule alignée sur LoRaWAN / Semtech). L’optimisation bas débit (DE) est prise en compte pour **BW = 125 kHz** et **SF ≥ 11**.
 - La **puissance TX** (`setTxPower`) ne modifie **pas** le ToA ; elle concerne surtout les limites **ERP** selon la réglementation.
-- La **période minimale** entre deux **débuts** d’émission est :  
+- La **période minimale** entre deux **dernières planifications d’envoi** (début logique de cycle) est :  
   `ToA / (DUTY_CYCLE_PERCENT / 100)`.  
-  Après `endPacket()`, le délai appliqué est `période − ToA` pour respecter ce rythme.
+  L’émetteur utilise une **boucle non bloquante** : le prochain envoi est planifié à `millis() + période` ; entre-temps, l’**OLED est rafraîchi en continu** (compte à rebours, derniers paramètres).
 - Réglage principal dans le fichier :
 
 | Symbole | Rôle |
@@ -32,12 +32,22 @@ Sketch Arduino pour la carte **TTGO LoRa32 (SX1276)** : envoi et réception LoRa
 
 Les paramètres radio utilisés pour le calcul et l’émission sont `currentSF`, `currentBW` et `currentPower` (réappliqués après `LoRa.begin()`).
 
+### Affichage OLED (émetteur)
+
+- **Duty cycle** réglé (`DUTY_CYCLE_PERCENT`), **SF**, **BW**, **puissance**.
+- **Trame** : dernière payload envoyée (timestamp ASCII).
+- **ToA** (ms), **période** minimale (ms), **délai restant** avant le prochain envoi (ms).
+
 ## Récepteur (`ttgo-lora32-receiver.ino`)
 
 - Reçoit une chaîne ASCII (timestamp émis) et l’affiche sur le moniteur série et l’OLED.
 - Pour rester cohérent avec l’émetteur, garder les mêmes **fréquence**, **SF**, **BW** et **CR** (défaut 4/5).
 
 ## Historique des versions
+
+### 1.0.1
+
+- Émetteur : affichage OLED **mis à jour en continu** (duty %, SF/BW/PWR, dernière trame, ToA, période, temps restant) ; **pas de `delay()`** bloquant sur l’intervalle légal.
 
 ### 1.0.0
 
