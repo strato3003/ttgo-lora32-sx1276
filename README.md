@@ -4,6 +4,8 @@
 
 Sketch Arduino pour la carte **TTGO LoRa32 (SX1276)** : envoi et réception LoRa avec afficheur OLED SSD1306. Base tirée du tutoriel [Random Nerd Tutorials — TTGO LoRa32 SX1276](https://randomnerdtutorials.com/ttgo-lora32-sx1276-arduino-ide/).
 
+**Réglementation (France / 866 MHz), puissance, duty cycle, suite CFG, NVS** : voir **[rules.md](rules.md)**.
+
 ## Matériel et environnement
 
 - Carte compatible **ESP32** + **SX1276** (brochage TTGO LoRa32 classique).
