@@ -12,6 +12,8 @@ Sketch Arduino pour la carte **TTGO LoRa32 (SX1276)** : envoi et réception LoRa
 
 ## Émetteur (`ttgo-lora32-sender.ino`)
 
+Le même sketch est copié dans le dossier projet Arduino `ttgo-lora32-sender/` (ouvrir ce dossier ou le `.ino` à la racine : **contenu identique**). Si une copie restait en `LoRa.print`, le récepteur ne recevait que des chiffres ASCII au lieu de 4 octets binaires.
+
 ### Payload
 
 - Le paquet transporte un **horodatage** basé sur `millis()` :
